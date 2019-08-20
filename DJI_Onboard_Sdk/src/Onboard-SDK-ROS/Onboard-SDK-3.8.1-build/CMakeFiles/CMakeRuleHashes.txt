@@ -1,0 +1,10 @@
+# Hashes of file build rules.
+cc244c9953d2e8d8da2cefa51d625aad osdk-core/CMakeFiles/advanced-sensing
+76a699f74686f5ddcadc9a7e182036b5 osdk-core/CMakeFiles/advanced-sensing-complete
+76a60782d8184383120504e123904285 osdk-core/advanced-sensing-prefix/src/advanced-sensing-stamp/advanced-sensing-build
+7bd09641252fb1fde99bfb01b8a32c75 osdk-core/advanced-sensing-prefix/src/advanced-sensing-stamp/advanced-sensing-configure
+daad2e80728b8c0ade2e7c790087d739 osdk-core/advanced-sensing-prefix/src/advanced-sensing-stamp/advanced-sensing-download
+733baa06e87f14476056654165014402 osdk-core/advanced-sensing-prefix/src/advanced-sensing-stamp/advanced-sensing-install
+fb3300581d9faafce5619e14a58a92c5 osdk-core/advanced-sensing-prefix/src/advanced-sensing-stamp/advanced-sensing-mkdir
+f3cb94822693f6aec7e879892dccb86c osdk-core/advanced-sensing-prefix/src/advanced-sensing-stamp/advanced-sensing-patch
+3689c15bfcc03a54cca27b0b9edf1e76 osdk-core/advanced-sensing-prefix/src/advanced-sensing-stamp/advanced-sensing-update

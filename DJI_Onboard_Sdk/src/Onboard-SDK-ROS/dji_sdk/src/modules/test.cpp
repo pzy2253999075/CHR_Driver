@@ -1,5 +1,7 @@
 #include<ros/ros.h>
 #include<sensor_msgs/Joy.h>
+#include<cmath>
+
 class Test{
 
 private:
@@ -16,22 +18,26 @@ public:
 };
 
 int main(int argc,char **argv){
-	ros::init(argc,argv,"M600_TEST");
-	ros::NodeHandle nh;
-	sensor_msgs::Joy joy;
-	ros::Publisher  pubCtr = nh.advertise<sensor_msgs::Joy>("dji_sdk/flight_control_setpoint_ENUvelocity_yawrate",10);
-	joy.axes.push_back(4);
-	joy.axes.push_back(0);
-	joy.axes.push_back(0);
-	joy.axes.push_back(0);
-	//joy.axes.push_back(10000);
-	//joy.axes.push_back(-5000);	
-	ros::Rate loop_rate = 45;
-	while(ros::ok()){
-		pubCtr.publish(joy);
-		loop_rate.sleep();
-		ros::spinOnce();
-	}
-	
+//	ros::init(argc,argv,"M600_TEST");
+//	ros::NodeHandle nh;
+//	sensor_msgs::Joy joy;
+//	ros::Publisher  pubCtr = nh.advertise<sensor_msgs::Joy>("dji_sdk/flight_control_setpoint_ENUvelocity_yawrate",10);
+//	joy.axes.push_back(4);
+//	joy.axes.push_back(0);
+//	joy.axes.push_back(0);
+//	joy.axes.push_back(0);
+//	//joy.axes.push_back(10000);
+//	//joy.axes.push_back(-5000);	
+//	ros::Rate loop_rate = 45;
+//	while(ros::ok()){
+//		pubCtr.publish(joy);
+//		loop_rate.sleep();
+//		ros::spinOnce();
+//	}
+
+
+	double mFloat = 135.5698713;
+	int32_t mInt = (int32_t)(mFloat*pow(10,7));
+	std::cout<<mInt<<std::endl;	
 	return 0;
 }

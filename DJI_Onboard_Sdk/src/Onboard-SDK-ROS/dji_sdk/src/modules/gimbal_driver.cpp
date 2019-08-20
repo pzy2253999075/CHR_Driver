@@ -2,6 +2,7 @@
 //#include <dji_sdk/dji_sdk_node.h>
 #include<serial/serial.h>
 #include<ros/ros.h>
+#include<cmath>
 
 class GimbalCtr{
 private:
@@ -74,37 +75,95 @@ private:
 	
 	void gimCtrCallBack(const dji_sdk::GimCtr::ConstPtr& gimCtrMsg){
 		if(gimCtrMsg -> pry.x != 0){
+	
+			if (gimCtrMsg -> pry.y == 1){
+				currentPitch = gimCtrMsg -> pry.x;
+				if(currentPitch <-90){
+					currentPitch = -90;				
+				}
+				if(currentPitch>60){
+					currentPitch = 60;	
+				}
+				if(currentPitch <0 ){
+					PitchDown[5] = (uint8_t)abs(currentPitch);
+					mySerial->write(PitchDown,9);
+				}else if (currentPitch >=0){
+					PitchUp[5] = (uint8_t)abs(currentPitch);
+					mySerial->write(PitchUp,9);
+				}
+			
+				return;
+			}
+
 			currentPitch+=gimCtrMsg -> pry.x;
 			if(currentPitch >= 0){
-				PitchUp[5] = (uint8_t)currentPitch;
+				if(currentPitch>60){
+					currentPitch -= gimCtrMsg -> pry.x;
+					return;
+				}
+				
+				PitchUp[5] = (uint8_t)abs(currentPitch);
 				mySerial->write(PitchUp,9);
 			}else{
-				PitchDown[5]=(uint8_t)currentPitch;
+				if(currentPitch<-90){
+					currentPitch -= gimCtrMsg -> pry.x;
+					return;
+				}
+				PitchDown[5]=(uint8_t)abs(currentPitch);
 				mySerial->write(PitchDown,9);
-			}								
+			}	
+										
 		}else if(gimCtrMsg -> pry.z != 0){
+			if (gimCtrMsg -> pry.y == 1){
+				currentYaw = gimCtrMsg -> pry.z;
+				if(currentYaw < -140){
+					currentYaw = -140;
+				}
+				if (currentYaw >140){
+					currentYaw = 140;
+				}
+				if(currentYaw <0){
+					YawLeft[5] = (uint8_t)abs(currentYaw);
+					mySerial->write(YawLeft,9);
+				}else if (currentYaw >=0){
+					YawRight[5] = (uint8_t)abs(currentYaw);
+					mySerial->write(YawRight,9);
+				}
+				return ;
+			}
+
 			currentYaw+=gimCtrMsg -> pry.z;
-			if(currentPitch <= 0){
-				YawLeft[5] = (uint8_t)currentYaw;
+			if(currentYaw <= 0){
+				if(currentYaw<-140){
+					currentYaw-=gimCtrMsg -> pry.z;
+					return;
+				}
+				YawLeft[5] = (uint8_t)abs(currentYaw);
 				mySerial->write(YawLeft,9);
 			}else{
-				YawRight[5] = (uint8_t)currentYaw;
+				if(currentYaw>140){
+					currentYaw-=gimCtrMsg -> pry.z;
+					return;
+				}
+				YawRight[5] = (uint8_t)abs(currentYaw);
 				mySerial->write(YawRight,9);
 			}
-		}else if(gimCtrMsg ->mutiple.data != 0){
-			mySerial->write(ZoomTable[gimCtrMsg ->mutiple.data],9);
-			zoomTime.sleep();
+		}else if(gimCtrMsg ->mutiple.data > 0){
+			mySerial->write(ZoomTable[gimCtrMsg ->mutiple.data-1],9);
+			//ros::Duration(15).sleep();
 		}else if(gimCtrMsg ->setFcus.data != 0){
 			if(gimCtrMsg ->setFcus.data < 0){
 				mySerial->write(focusIn,7);
-				focusTime.sleep();
+				ros::Duration(15).sleep();
 				mySerial->write(focusStop,7);
 			}else{
 				mySerial->write(focusOut,7);
-				focusTime.sleep();
+				ros::Duration(15).sleep();
 				mySerial->write(focusStop,7);
 			}
 		}else if(gimCtrMsg -> reset.data != 0){
+			currentPitch = 0;
+			currentYaw = 0;
 			mySerial->write(reset,9);
 		}else if(gimCtrMsg ->sos.data != 0){
 			mySerial->write(SOS,7);

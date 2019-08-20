@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   sensor_msgs
   serial
+  tf
 )
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake-modules")
@@ -84,6 +85,7 @@ add_message_files(
   HotpointMission.msg
   WaypointMission.msg
   Emergency.msg
+  GasCtr.msg
 )
 
 ## Generate services in the 'srv' folder
@@ -189,6 +191,10 @@ add_dependencies(m600_air ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_
 add_executable(m600_gimbal src/modules/gimbal_driver.cpp)
 target_link_libraries(m600_gimbal ${catkin_LIBRARIES})
 add_dependencies(m600_gimbal ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} )
+
+add_executable(m600_gas src/modules/gas_driver.cpp)
+target_link_libraries(m600_gas ${catkin_LIBRARIES})
+add_dependencies(m600_gas ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} )
 
 add_executable(mTest src/modules/test.cpp)
 target_link_libraries(mTest ${catkin_LIBRARIES} )

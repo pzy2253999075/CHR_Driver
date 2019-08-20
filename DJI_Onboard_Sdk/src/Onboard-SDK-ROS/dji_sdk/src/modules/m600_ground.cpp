@@ -7,16 +7,19 @@
 #include <stdio.h>
 #include <exception>
 #include<geometry_msgs/Twist.h>
-//#include <dji_sdk/dji_sdk_node.h>
 #include<dji_sdk/GimCtr.h>
-#include<dji_sdk/HotpointMission.h>
-#include<dji_sdk/WaypointMission.h>
 #include<dji_sdk/Emergency.h>
+#include<dji_sdk/WaypointMission.h>
+#include<dji_sdk/HotpointMission.h>
 #include<nav_msgs/Odometry.h>
 #include<sensor_msgs/NavSatFix.h>
 #include<sensor_msgs/Imu.h>
 #include<pthread.h>
 #include <iomanip>
+#include<math.h>
+#include<tf/transform_datatypes.h>
+#include<geometry_msgs/Vector3.h>
+#include<dji_sdk/GasCtr.h>
 
 class M600_Ground{
 
@@ -31,14 +34,15 @@ private:
 	struct SystemStatus{
 		int32_t battery;
 		char lock_flag;
-		uint8_t  systemRetention[14];
+		uint8_t  authority;
+		uint8_t  systemRetention[13];
 	};
 
 	struct GpsStatus{
 		uint8_t positionSta;
 		uint8_t effectiveSatelliteNum;
-		uint32_t latitude;
-		uint32_t longitude;
+		int32_t latitude;
+		int32_t longitude;
 		uint16_t altitude;
 		uint16_t groudVel;
 		uint16_t gpsYaw;
@@ -51,18 +55,41 @@ private:
 	};
 	
 	struct ImuStatus{
-		int16_t imuPitch;
-		int16_t imuRoll;
-		int16_t imuYaw;
-		int16_t imuPitchVel;
-		int16_t imuRollVel;
-		int16_t imuYawVel;
-		int16_t imuXAcss;
-		int16_t imuYAcss;
-		int16_t imuZAcss;
+		int32_t imuPitch;
+		int32_t imuRoll;
+		int32_t imuYaw;
+		int32_t imuPitchVel;
+		int32_t imuRollVel;
+		int32_t imuYawVel;
+		int32_t imuXAcss;
+		int32_t imuYAcss;
+		int32_t imuZAcss;
 		int16_t imuXMSig;
 		int16_t imuYMSig;
 		int16_t imuZMSig;
+	};
+
+	struct OdomStatus{
+		int32_t positionX;
+		int32_t positionY;
+		int32_t positionZ;
+		int8_t velX;
+		int8_t velY;
+		int8_t velZ;
+	};
+	
+	struct GasStatus{
+		uint16_t CO;
+		uint16_t SO2;
+		uint16_t NO2;
+		uint16_t O3;
+		uint16_t VOC;
+		uint16_t CO2;
+		uint16_t PM1_0;
+		uint16_t PM2_5;
+		uint16_t PM10;
+		uint16_t TMT; //temperature
+		uint16_t HUM; //humidity
 	};
 
 	struct FlyCtrData{
@@ -85,6 +112,7 @@ private:
 		int8_t camSOS;
 		int8_t camSOR;
 	};
+
 
 	struct WaypointMission{
 		uint8_t missionIndex;
@@ -110,7 +138,7 @@ private:
 		uint8_t headingMode;
 		uint16_t altitude;
 		uint8_t angleVel;
-		uint8_t radius;
+		uint32_t radius;
 		int16_t gimbalAngle;
 		uint8_t isUseCam;
 		uint8_t sor;
@@ -134,29 +162,47 @@ private:
 		REV_ODOM,
 		REV_GPS,
 		REV_IMU,
+		REV_GAS
 	};
 
 	//private class contribute 
 
 	DataFrame<HeartBeat>* heartDataFrame = NULL;
+	DataFrame<SystemStatus>* SystemStatusFrame =NULL;
 	DataFrame<FlyCtrData>*  flyCtrDataFrame = NULL;
-	DataFrame<GimCtrData>*  gimCtrDataFrame = NULL;
+	DataFrame<GimCtrData>*  gimCtrDataFrame = NULL; 
 	DataFrame<HotpointMission>*  hotpointMissionFrame = NULL; 
-
-
+		
 	SystemStatus* revSystemStatus =NULL;
 	GpsStatus* revGpsStatus = NULL;
 	ImuStatus* revImuStatus = NULL;
+	OdomStatus* revOdomStatus =NULL;
+	GasStatus * revGasStatus = NULL;
+
 	serial::Serial* mySerial = NULL;
 	ros::Subscriber fCtrSub;
 	ros::Subscriber gimCtrSub;
+	ros::Subscriber emerSub;
+	ros::Subscriber authoritySub;
+	ros::Subscriber wpMissionSub;
+	ros::Subscriber hpMissionSub;
 	ros::Publisher	gpsPub;
 	ros::Publisher	odomPub;
 	ros::Publisher	imuPub;
+	ros::Publisher	atitudePub;
+	ros::Publisher	gasPub;
+	
+		
+
 	sensor_msgs::Imu imuData;
 	nav_msgs::Odometry odomData;
-	sensor_msgs::NavSatFix gosData;
+	sensor_msgs::NavSatFix gpsData;
+	tf::Quaternion imuQuat;
+	geometry_msgs::Vector3 att;
+	dji_sdk::GasCtr myGas;
+
 	pthread_t revLoopThread;
+	
 
 
 	//set and send byte data to serial
@@ -165,20 +211,24 @@ private:
 		uint16_t checksum = 0x0000;
 		uint8_t * dataBuffer = new uint8_t[255];
 		memmove(dataBuffer,dataFrame,7);
-		//std::cout<<dataBuffer<<std::endl;
+		
 		memmove(&dataBuffer[7],dataFrame->data,dataSize);
 		for(int i = 0 ;i<dataSize+7;i++){
 			checksum += dataBuffer[i];
 		}
 		memmove(&dataBuffer[dataSize+7],&checksum,2);
+		std::cout<<"byte0"<<std::endl;
+		for(int i=0;i<dataSize+7+2;i++){
+			printf(" %x ",dataBuffer[i]);
+		}
+		std::cout<<std::endl;
 		mySerial->write(dataBuffer,dataSize+7+2);
-		std::cout<<dataBuffer<<std::endl;
+		//std::cout<<dataBuffer<<std::endl;
 		delete dataBuffer;
 	}
 
 
-
-	//send  waypoint mission  byte data   ---max waypoint count is 40
+	//send  hotpoint mission  byte data   ---max waypoint count is 40
 	void setAndSendWMissionByteArray(DataFrame<WaypointMission>*  dataFrame, uint8_t waypointCount,uint8_t actionCount){
 		uint16_t checksum = 0x0000;
 		uint8_t * dataBuffer = new uint8_t[500];
@@ -186,34 +236,41 @@ private:
 		
 		memmove(&dataBuffer[7],dataFrame->data,2);
 		for(int i = 0;i< waypointCount;i++){
-			memmove(&dataBuffer[9+i*8],&dataFrame->data->latLntList[i][0],4);  
-			memmove(&dataBuffer[9+4+i*8],&dataFrame->data->latLntList[i][1],4);
+			memmove(&dataBuffer[9+i*8],&(dataFrame->data->latLntList[i][0]),4);  
+			memmove(&dataBuffer[9+4+i*8],&(dataFrame->data->latLntList[i][1]),4);
 			
 			//memmove(&dataBuffer[9+i*8],&dataFrame->data->latLntList[i],8);  can be better
 					
 		}
 		memmove(&dataBuffer[9+waypointCount*8],&dataFrame->data->actionCount,1);
 		for(int i = 0;i< actionCount;i++){
-			memmove(&dataBuffer[9+waypointCount*8+1+i*2],&dataFrame->data->waypointAction[i][0],1);
-			memmove(&dataBuffer[9+1+waypointCount*8+1+i*2],&dataFrame->data->waypointAction[i][1],1);
+			memmove(&dataBuffer[9+waypointCount*8+1+i*2],&(dataFrame->data->waypointAction[i][0]),1);
+			memmove(&dataBuffer[9+1+waypointCount*8+1+i*2],&(dataFrame->data->waypointAction[i][1]),1);
 			//memmove(&dataBuffer[9+waypointCount*8+1+i*2],&dataFrame->data->waypointAction[i],2);  can be better
 		}		
-		memmove(&dataBuffer[9+waypointCount*8+1+actionCount*2],&dataFrame->data->altitude,11);
+		memmove(&dataBuffer[9+waypointCount*8+1+actionCount*2],&(dataFrame->data->altitude),11);
 
 		for(int i = 0 ;i<7+2+waypointCount*8+1+actionCount*2+11;i++){
 			checksum += dataBuffer[i];
 		}
 
 		memmove(&dataBuffer[7+2+waypointCount*8+1+actionCount*2+11],&checksum,2);
-		std::cout<<"byte0"<<std::endl;
-		for(int i=0;7+2+waypointCount*8+1+actionCount*2+11+2;i++){
+		std::cout<<"byte0"	<<std::endl;
+	//	for(int i=0;7+2+waypointCount*8+1+actionCount*2+11+2;i++){
+	//		printf(" %x ",dataBuffer[i]);
+	//	}
+	//	std::cout<<std::endl;
+
+		for(int i=0;i<7+2+waypointCount*8+1+actionCount*2+11+2;i++){
 			printf(" %x ",dataBuffer[i]);
 		}
 		std::cout<<std::endl;
+
 		mySerial->write(dataBuffer,7+2+waypointCount*8+1+actionCount*2+11+2);
 		//std::cout<<dataBuffer<<std::endl;
 		delete dataBuffer;
 	}
+
 
 
 	// control the velocity
@@ -243,6 +300,7 @@ private:
 		setAndSendByteArray<FlyCtrData>(flyCtrDataFrame,18);		
 	}
 
+
 	// home or land or hover
 	void emergency (const dji_sdk::Emergency::ConstPtr& emMsg){
 		
@@ -262,13 +320,13 @@ private:
 
 		flyCtrDataFrame->data->emFlag = 1;
 		if(emMsg->home.data !=0 ){	
-			flyCtrDataFrame->data->mode = 4;
+			flyCtrDataFrame->data->mode = 1;
 		}else if(emMsg->land.data !=0){
-			flyCtrDataFrame->data->mode = 5;
-		}else if(emMsg->hover.data !=0){
-			
-		}else if(emMsg->takeOff.data !=0){
 			flyCtrDataFrame->data->mode = 6;
+		}else if(emMsg->hover.data !=0){
+
+		}else if(emMsg->takeOff.data !=0){
+			flyCtrDataFrame->data->mode = 4;
 		}
 		flyCtrDataFrame->data->ref1 = 0;
 		flyCtrDataFrame->data->ref2 = 0;
@@ -306,7 +364,8 @@ private:
 		setAndSendByteArray<GimCtrData>(gimCtrDataFrame,11);
 	}
 
-	 void waypointMissionCallback(const  dji_sdk::WaypointMission::ConstPtr& wpMsg){
+
+	void waypointMissionCallback(const  dji_sdk::WaypointMission::ConstPtr& wpMsg){
 		DataFrame<WaypointMission>* wpMissionFrame = new DataFrame<WaypointMission>();
 		wpMissionFrame->data = new WaypointMission();
 		wpMissionFrame->data->latLntList = new int32_t*[wpMsg->latLntCount.data];
@@ -319,11 +378,11 @@ private:
 		}
 		wpMissionFrame->frameHead[0] = 0xFE;
 		wpMissionFrame->frameHead[1] = 0xEF;
-		wpMissionFrame->dataLen = 14+wpMsg->latLntCount.data*8+wpMsg->actionCount.data*2;
+		wpMissionFrame->dataLen = 14+7+wpMsg->latLntCount.data*8+wpMsg->actionCount.data*2+2;
 		wpMissionFrame->frameIndex = 1;
 		wpMissionFrame->systemNum = 0x01;
 		wpMissionFrame->moduleNum = 0x00;
-		wpMissionFrame->msgPkgNum = 0x11;
+		wpMissionFrame->msgPkgNum = 0x20;
 		
 
 		wpMissionFrame->data->missionIndex = wpMsg->missionIndex.data;
@@ -340,8 +399,8 @@ private:
 		wpMissionFrame->data->shootVel = wpMsg->shootVel.data;
 
 		for(int i = 0;i <(int)wpMsg->latLntCount.data;i++){
-			wpMissionFrame->data->latLntList[i][0] = (int)wpMsg->latLntList[i].x*pow(10,7);
-			wpMissionFrame->data->latLntList[i][1] = (int)wpMsg->latLntList[i].y*pow(10,7);
+			wpMissionFrame->data->latLntList[i][0] = (int)(wpMsg->latLntList[i].x*pow(10,7));
+			wpMissionFrame->data->latLntList[i][1] = (int)(wpMsg->latLntList[i].y*pow(10,7));
 		}
 		for(int i = 0;i <(int)wpMsg->actionCount.data;i++){
 			wpMissionFrame->data->waypointAction[i][0] = (int)wpMsg->waypointAction[i].x;
@@ -360,11 +419,11 @@ private:
 			hotpointMissionFrame->data = new HotpointMission();
 			hotpointMissionFrame->frameHead[0] = 0xFE;
 			hotpointMissionFrame->frameHead[1] = 0xEF;
-			hotpointMissionFrame->dataLen = 25;
+			hotpointMissionFrame->dataLen = 32;
 			hotpointMissionFrame->frameIndex = 1;
 			hotpointMissionFrame->systemNum = 0x01;
 			hotpointMissionFrame->moduleNum = 0x00;
-			hotpointMissionFrame->msgPkgNum = 0x11;
+			hotpointMissionFrame->msgPkgNum = 0x21;
 			
 		}else{
 			hotpointMissionFrame->frameIndex +=1;	
@@ -382,17 +441,47 @@ private:
 		hotpointMissionFrame->data->isUseCam = hpMsg->isUseCam.data;
 		hotpointMissionFrame->data->sor = hpMsg->sor.data;
 		hotpointMissionFrame->data->shootVel = hpMsg->shootVel.data;
-		setAndSendByteArray<HotpointMission>(hotpointMissionFrame,16);
+		setAndSendByteArray<HotpointMission>(hotpointMissionFrame,23);
 	}
+
+
+	void authorityCallback(const std_msgs::UInt8::ConstPtr& auMsg){
+
+		if(SystemStatusFrame == NULL){
+			SystemStatusFrame = new DataFrame<SystemStatus>();
+			SystemStatusFrame->data = new SystemStatus();
+			SystemStatusFrame->frameHead[0] = 0xFE;
+			SystemStatusFrame->frameHead[1] = 0xEF;
+			SystemStatusFrame->dataLen = 28;
+			SystemStatusFrame->frameIndex = 1;
+			SystemStatusFrame->systemNum = 0x01;
+			SystemStatusFrame->moduleNum = 0x00;
+			SystemStatusFrame->msgPkgNum = 0x01;
+			
+		}else{
+			SystemStatusFrame->frameIndex +=1;	
+		}	
+		SystemStatusFrame->data->battery = 0;
+		SystemStatusFrame->data->lock_flag = 0;
+		SystemStatusFrame->data->authority = auMsg->data;
+		memset(&SystemStatusFrame->data->systemRetention[0],0,13);
+		setAndSendByteArray<SystemStatus>(SystemStatusFrame,19);
+	}
+	 
 	
 	// init Sub and Pub
 	void initSubPub(ros::NodeHandle &nh){
-		
 		fCtrSub = nh.subscribe("m600_velCtr",10,&M600_Ground::fCtrSubCallBack,this);
 		gimCtrSub = nh.subscribe("m600_gimCtr",10,&M600_Ground::gimCtrSubCallBack,this);
+		emerSub = nh.subscribe("m600_emergency",10,&M600_Ground::emergency,this);
+		authoritySub = nh.subscribe("/m600_authority",10,&M600_Ground::authorityCallback,this);
 		gpsPub = nh.advertise<sensor_msgs::NavSatFix>("m600_gps",100);
 		odomPub = nh.advertise<nav_msgs::Odometry>("m600_odom",100);
 		imuPub = nh.advertise<sensor_msgs::Imu>("m600_imu",100);
+		atitudePub = nh.advertise<geometry_msgs::Vector3>("m600_attitude",100);
+		gasPub = nh.advertise<dji_sdk::GasCtr>("m600_gas",100);
+		wpMissionSub = nh.subscribe("m600_wpMission_upload",10,&M600_Ground::waypointMissionCallback,this);
+		hpMissionSub = nh.subscribe("m600_hpMission_upload",10,&M600_Ground::hotpointMissionCallback,this);
 	}
 
 	static void* revByteDataLoopStatic(void* object){
@@ -417,7 +506,7 @@ private:
 		uint8_t * completeOneData = new uint8_t[255];
 		while(ros::ok()){
 			int len = mySerial->available();
-			if(len >2){
+			if(len >2 || (len>0&&dataLen !=0)){
 				mySerial->read(&dataBuffer[dataLen],len);
 				for(int i = 0; i< len+dataLen - 2; i++){
 					if(dataBuffer[i] == 0xFE && dataBuffer[i+1] == 0xEF){
@@ -430,7 +519,7 @@ private:
 							break;
 						}				
 					}
-					if(i == len-3){
+					if(i == len+dataLen-3){
 						dataLen = 0;
 					}	
 				}
@@ -469,17 +558,18 @@ private:
 			if(revSystemStatus == NULL){
 				revSystemStatus = new SystemStatus();			
 			}
-			memmove(revSystemStatus,keyData,len);
 		}else if(dataKind == 0x02){
-			if(revGpsStatus == NULL){
-				revGpsStatus = new GpsStatus();			
-			}
-			memmove(revGpsStatus,keyData,len);
+			revGpsStatus = (GpsStatus *)keyData;
+			frameToPubTopic((void*)revGpsStatus,REV_GPS);
 		}else if(dataKind == 0x04){
-			if(revImuStatus == NULL){
-				revImuStatus = new ImuStatus();			
-			}
-			memmove(revImuStatus,keyData,len);
+			revImuStatus = (ImuStatus *)keyData;
+			frameToPubTopic((void*)revImuStatus,REV_IMU);
+		}else if(dataKind == 0x06){
+			revOdomStatus = (OdomStatus*)keyData;
+			frameToPubTopic((void*)revOdomStatus,REV_ODOM);
+		}else if(dataKind == 0x23){
+			revGasStatus = (GasStatus*)keyData;
+			frameToPubTopic((void*)revGasStatus,REV_GAS);
 		}else{
 			std::cout<<"byteToFrame error"<<std::endl;
 		}
@@ -490,17 +580,90 @@ private:
 	void frameToPubTopic(void* frameData, DownLoadData revData){
 		switch(revData){
 			case M600_Ground::REV_ODOM:
-				
+				pubOdomFun((OdomStatus*)frameData);
 				break;
 			case M600_Ground::REV_GPS:
+				pubGpsFun((GpsStatus*)frameData);
 				break;
 			case M600_Ground::REV_IMU:
+				pubImuFun((ImuStatus *) frameData);
+				break;
+			case M600_Ground::REV_GAS:
+				pubGasFun((GasStatus *) frameData);
 				break;
 			default:
 				break;
 		}
 	}
+
+
+	void pubOdomFun(OdomStatus * dataFrame){
+		odomData.pose.pose.position.x  = dataFrame-> positionX/100.0;
+		odomData.pose.pose.position.y  = dataFrame-> positionY/100.0;
+		odomData.pose.pose.position.z  = dataFrame-> positionZ/100.0;
+		odomData.twist.twist.linear.x  = dataFrame-> velX/10.0;
+		odomData.twist.twist.linear.y  = dataFrame-> velY/10.0;
+		odomData.twist.twist.linear.z  = dataFrame-> velZ/10.0;
+		odomPub.publish(odomData);
+	}
+
+
+	void pubGpsFun(GpsStatus * dataFrame){
+		//std::cout<<dataFrame->latitude<<std::endl;
+		gpsData.latitude = dataFrame->latitude/pow(10,7)/1.0;
+		gpsData.longitude = dataFrame->longitude/pow(10,7)/1.0;
+		gpsData.altitude  = dataFrame -> altitude/1.0;
+		gpsPub.publish(gpsData);
+	}
+
+
+
+
+	void eularToQuat(double roll,double pitch,double yaw,tf::Quaternion &quat){
+		quat.setRPY(roll,pitch,yaw);
+	}
 	
+	void pubImuFun(ImuStatus * dataFrame){
+		
+		
+		double roll = dataFrame->imuRoll/(pow(10,16)*1.0);
+		double pitch = dataFrame->imuPitch/(pow(10,16)*1.0);
+		double yaw = dataFrame ->imuYaw/(pow(10,16)*1.0);
+		att.x = pitch;
+		att.y = roll;
+		att.z = yaw;
+		std::cout <<roll<<"  "<<pitch<<" "<<yaw<<std::endl;
+		eularToQuat(roll,pitch,yaw,this->imuQuat);
+		imuData.orientation.x = this->imuQuat[0];
+		imuData.orientation.y = this->imuQuat[1];
+		imuData.orientation.z = this->imuQuat[2];
+		imuData.orientation.z = this->imuQuat[3];
+		imuData.angular_velocity.x = dataFrame->imuPitchVel/(pow(10,16)*1.0);
+		imuData.angular_velocity.y = dataFrame->imuRollVel/(pow(10,16)*1.0);
+		imuData.angular_velocity.z = dataFrame->imuYawVel/(pow(10,16)*1.0);
+		imuData.linear_acceleration.x = dataFrame->imuXAcss/(pow(10,16)*1.0);
+		imuData.linear_acceleration.y = dataFrame->imuYMSig/(pow(10,16)*1.0);
+		imuData.linear_acceleration.z = dataFrame->imuZMSig/(pow(10,16)*1.0);
+		imuPub.publish(imuData);
+		atitudePub.publish(att);
+	}
+	
+
+	void pubGasFun(GasStatus * dataFrame){
+		myGas.CO = (double)dataFrame->CO/pow(10,3);
+		myGas.SO2 = (double)dataFrame->SO2/pow(10,3);
+		myGas.NO2 = (double)dataFrame->NO2/pow(10,3);
+		myGas.O3 = (double)dataFrame->O3/pow(10,3);
+		myGas.VOC = (double)dataFrame->VOC/pow(10,3);
+		myGas.CO2 = (double)dataFrame->CO2/pow(10,3);
+		myGas.PM1 = (double)dataFrame->PM1_0/pow(10,3);
+		myGas.PM2 = (double)dataFrame->PM2_5/pow(10,3);
+		myGas.PM10 = (double)dataFrame->PM10/pow(10,3);
+		myGas.Temperature = (double)dataFrame->TMT/pow(10,3);
+		myGas.Humidity = (double)dataFrame->HUM/pow(10,3);
+		gasPub.publish(myGas);
+	}
+
 
 public:
 	M600_Ground(ros::NodeHandle &nh){initMySerial();initSubPub(nh);revByteDataLoopThread();}

@@ -1,0 +1,12 @@
+uint8 GasSwitch
+float32 CO
+float32 SO2
+float32 NO2
+float32 O3
+float32 VOC
+float32 CO2
+float32 PM1
+float32 PM2
+float32 PM10
+float32 Temperature
+float32 Humidity
